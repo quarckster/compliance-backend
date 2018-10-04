@@ -6,39 +6,16 @@ class ComplianceReportsConsumer < Racecar::Consumer
   subscribes_to 'compliance'
 
   def process(message)
-    value = JSON.parse(message.value)
-    logger.info "Received message, enqueueing: #{message}"
-    path = "tmp/storage/#{value['hash']}"
-    SafeDownloader.new.download(value['url'], path)
-    validation = validation_message(path)
-    enqueue_job(path, value['hash'], validation)
-    produce(
-      validation_payload(value['hash'], validation),
-      topic: 'uploadvalidation'
+    logger.info "Received message, enqueueing: #{message.value}"
+    job = ParseReportJob.perform_later(
+      SafeDownloader.new.download(
+        JSON.parse(message.value)['url']
+      ).path
     )
+    logger.info "Message enqueued: #{message.value} as #{job.job_id}"
   end
 
   private
-
-  def enqueue_job(path, hash, validation)
-    if validation == 'success'
-      job = ParseReportJob.perform_later(path)
-      logger.info "Message enqueued: #{hash} as #{job.job_id}"
-    else
-      logger.error("Error parsing report: #{hash}")
-    end
-  end
-
-  def validation_message(path)
-    XCCDFReportParser.new(path)
-    'success'
-  rescue StandardError
-    'failure'
-  end
-
-  def validation_payload(hash, result)
-    { 'hash': hash, 'validation': result }.to_json
-  end
 
   def logger
     Rails.logger
