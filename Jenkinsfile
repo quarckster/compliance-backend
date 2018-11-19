@@ -1,9 +1,9 @@
 pipeline {
   agent any
   stages {
-    stage('build') {
+    stage('Build') {
       steps {
-        openshiftBuild 'sgrsr'
+        openshiftBuild(bldCfg: 'compliance-backend', namespace: 'buildfactory')
       }
     }
   }
