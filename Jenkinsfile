@@ -19,32 +19,20 @@ node {
 
 def runStages() {
     openShift.withNode(image: "docker-registry.default.svc:5000/jenkins/jenkins-slave-base-centos7-ruby25-openscap:latest") {
+
+        scmVars = checkout scm
         
-        environment {
-            DATABASE_SERVICE_NAME = "compliance-db"
-            COMPLIANCE_DB_SERVICE_NAME = "compliance-db.compliance-ci.svc"
-            POSTGRESQL_USER = "compliance_user"
-            POSTGRESQL_PASSWORD = "compliance_password"
-            POSTGRESQL_ADMIN_PASSWORD = "db_admin_password"
-            POSTGRESQL_DATABASE = "compliance"
-            POSTGRESQL_MAX_CONNECTIONS = "100"
-            POSTGRESQL_SHARED_BUFFERS = "12MB"
-            RAILS_ENV = "test"
-        }
-
-        stage('Lint') {
-            sh "bundle exec rake validate"
-        }
-
         stage('Install gems') {
             sh "bundle install --path ./bundle"
         }
 
+        // stage('Lint') {
+        //     sh "bundle exec rake validate"
+        // }
+
         stage('Prepare the db') {
-            steps {
-                sh "bundle exec rake db:migrate --trace"
-                sh "bundle exec rake db:test:prepare"
-            }
+            sh "bundle exec rake db:migrate --trace"
+            sh "bundle exec rake db:test:prepare"
         }
 
         stage('UnitTest') {
