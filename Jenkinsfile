@@ -48,11 +48,11 @@ def runStages() {
         }
     }
 
-    checkout scm
-
-    changedFiles = changedFiles()
+    scmVars = checkout scm
 
     if (currentBuild.currentResult == "SUCCESS" && env.BRANCH_NAME == "master") {
+
+        changedFiles = changedFiles()
 
         if ("Gemfile.lock" in changedFiles || "Gemfile" in changedFiles || "openshift/Jenkins/Dockerfile" in changedFiles) {
             // If Gemfiles or Jenknis slave's Dockerfile changed we need to rebuild the jenkins slave image
@@ -67,18 +67,40 @@ def runStages() {
         openshift.withCluster("dev_cluster") {
             openshift.withCredentials("compliance-token") {
                 openshift.withProject("compliance-ci") {
-                    stage("Wait until backend deployed") {
-                        def expectedDeploymentVersion = openshift.selector("dc", "compliance-backend").object().status.latestVersion + 1
-                        def rc = openshift.selector("rc", "compliance-backend-${expectedDeploymentVersion}")
-                        timeout(20) {
-                            rc.untilEach(1) {
-                                return true
+                    stage("Wait until deployed") {
+                        parallel(
+                            "API": {
+                                timeout(20) {
+                                    waitUntil {
+                                        def pod = openshift.selector("pod", [name : "compliance-backend"]).name()
+                                        echo "API pod: ${pod}" 
+                                        try {
+                                            def commitHash = openshift.rsh("${pod} git rev-parse HEAD").out
+                                            echo "API pod git commit: ${commitHash}"
+                                            echo "master hash ${scmVars.GIT_COMMIT}"
+                                            return (commitHash == scmVars.GIT_COMMIT)
+                                        } catch(e) {
+                                            return false
+                                        }
+                                    }
+                                }
+                            },
+                            "Consumer": {
+                                timeout(20) {
+                                    waitUntil {
+                                        def pod = openshift.selector("pod", [name : "compliance-consumer"]).name()
+                                        echo "Consumer pod: ${pod}" 
+                                        try {
+                                            def commitHash = openshift.rsh("${pod} git rev-parse HEAD").out
+                                            echo "Consumer pod git commit: ${commitHash}"
+                                            return (commitHash == scmVars.GIT_COMMIT)
+                                        } catch(e) {
+                                            return false
+                                        }
+                                    }
+                                }
                             }
-                            rc.untilEach(1) {
-                                def rcMap = it.object()
-                                return (rcMap.status.replicas.equals(rcMap.status.readyReplicas))
-                            }
-                        }
+                        )
                     }
                 }
             }
